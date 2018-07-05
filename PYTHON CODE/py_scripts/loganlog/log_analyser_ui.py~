@@ -1,0 +1,594 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+# example textview-basic.py
+
+import sys
+import os
+import shutil
+import errno
+import collections
+
+import pygtk
+pygtk.require('2.0')
+import gtk
+
+
+def isSimilarWord(word1, word2, similitud_range=0.85, coef1=1, coef2=1, coef3=0, case_sensitive=False, debug=False):
+    print "word1: "+word1+" word2: "+word2
+
+    if not case_sensitive:
+        word1 = word1.lower()
+        word2 = word2.lower()
+
+    range1 = 0.0
+    range2 = 0.0
+    similitud_coef = 0.0
+
+    #word1
+    for i,c in enumerate(word1):
+        charc = ord(c) - coef3   #coef4 takes type of character
+        range1 += float(charc*charc* (i+1) * coef1)    #coef1 takes positions of character
+    len_wd1 = len(word1)
+    range1 = range1 / float(len_wd1*len_wd1 * coef2)   #coef2 takes longitud of character
+
+    #word2
+    for i,c in enumerate(word2):
+        charc = ord(c) - coef3
+        range2 += float(charc*charc* (i+1) * coef1)
+    len_wd2 = len(word2)
+    range2 = range2 / float(len_wd2*len_wd2 * coef2)
+
+    if(range2 > range1):
+        similitud_coef = float(range1/range2)
+    else:
+        similitud_coef = float(range2/range1)
+
+    if debug: print "word1: "+str(range1)+" word2: "+str(range2) + " Similitud: " +str(similitud_coef*100) +"%"
+    #print " "
+    
+    if(similitud_coef > similitud_range):
+        return True
+    else:
+        return False
+
+#----------------------------------------------------- logic part ------------------------------------------------
+
+class word_dict:
+
+    def __init__(self):
+        self.wd_dict = dict()
+        self.list_categorys = []
+        self.list_categorys.append("warning")
+        self.list_categorys.append("possible error")
+        self.list_categorys.append("error")
+        self.default_words()
+
+    def add_word(self, word, category):
+        self.wd_dict[word] = self.list_categorys[category]
+
+    def add_category(self, category):
+        self.list_categorys.append(category)
+
+    def contain_word(self, word):
+        return self.wd_dict.has_key(word)
+
+    def default_words(self):
+        self.wd_dict["java"] = self.list_categorys[0]
+        self.wd_dict["exception"] = self.list_categorys[1]
+        self.wd_dict["error"] = self.list_categorys[2]
+
+    def getWords(self):
+        return self.wd_dict.keys()
+
+    def getWord(self, key):
+        return self.wd_dict.get(key)
+
+#global word_dic 
+
+class Read_log:
+
+    def __init__(self, path):
+        self.path = path
+        #global word_dic 
+        self.word_dic = word_dict()
+
+    def get_lines(self):
+        with open(self.path,"r") as read_file:
+            #self.read_file = read_file
+            for line in read_file:
+                yield line
+
+    def process_log(self):
+        num_line = 0
+        lines_list = []
+        result_dict = dict()
+        #result_dict = collections.OrderedDict(sorted(d.items()))
+
+        for line in self.get_lines():
+            #print line
+            lines_list.append(line)
+            split_line = line.split(" ")
+            #print split_line
+            words_find = self.procress_split_line(split_line)
+            
+            if len(words_find) > 0:
+                result_dict[num_line] = words_find
+
+            num_line += 1
+
+        print "Number of lines read: "+str(num_line)
+
+        result_dict = collections.OrderedDict(sorted(result_dict.items(), reverse=True))
+        return (lines_list, result_dict)
+        
+    def procress_split_line(self, split_line):
+        words_find = []
+        for word in split_line:
+            grower_wd = ""
+            grower_wd2 = ""
+            word2 = word
+            for lttr in word2.lower():
+            
+                if lttr.isalpha():
+                    grower_wd += lttr
+                    if self.word_dic.contain_word(grower_wd):
+                        words_find.append(self.word_dic.getWord(grower_wd))
+                        words_find.append(word)
+                else:
+                    grower_wd2 += lttr
+                    if self.word_dic.contain_word(grower_wd2):
+                        words_find.append(self.word_dic.getWord(grower_wd2))
+                        words_find.append(word)
+
+        return words_find
+
+    def procress_split_line2(self, split_line):
+        words_find = []
+        for word in split_line:
+            print word
+
+        return words_find
+
+class main_log:
+    def __init__(self, path):
+        self.readlog = Read_log(path)
+        (self.lines_list, self.result_dict) = self.readlog.process_log()
+
+    def see_latest_event(self, event_type, numberOflines):
+        category = self.readlog.word_dic.list_categorys[event_type]
+        out_str = []
+
+        for nline in self.result_dict.keys():
+            #print nline
+            listevent = self.result_dict.get(nline)
+            if category in listevent:
+                out_str.append("------------------------\n")
+                out_str.append(listevent)
+                out_str.append("\n")
+                for i in range(nline-numberOflines,nline+numberOflines):
+                    out_str.append(self.lines_list[i])
+                    out_str.append("\n")
+                out_str.append("------------------------\n")
+                return ''.join(map(str, out_str))
+
+    def see_event_onebyone(self, event_type, numberOflines):
+        category = self.readlog.word_dic.list_categorys[event_type]
+    
+        for nline in self.result_dict.keys():
+            #print nline
+            #print self.result_dict.get(nline)
+            listevent = self.result_dict.get(nline)
+            if category in listevent:
+                print "------------------------"
+                print listevent
+                for i in range(nline-numberOflines,nline+numberOflines):
+                    print self.lines_list[i]
+                print "------------------------"
+                exit = raw_input("exit? pres y: ")
+                if exit == 'y':
+                    break
+
+    def see_event_bynline(self, nline, event_type, numberOflines):
+        category = self.readlog.word_dic.list_categorys[event_type]
+        listevent = self.result_dict.get(nline)
+        out_str = []
+        #print nline
+        
+        if category in listevent:
+            out_str.append("------------------------\n")
+            out_str.append(listevent)
+            #print listevent
+            out_str.append("\n")
+            for i in range(nline-numberOflines,nline+numberOflines):
+                out_str.append(self.lines_list[i])
+                out_str.append("\n")
+            out_str.append("------------------------\n")
+            return ''.join(map(str, out_str))
+
+    def nlp_search(self, word):
+        for num in range(0,len(self.lines_list)):
+            line = self.lines_list[num]
+            print "Debug MSG:"
+            print line
+            for i in range(0,(len(line)-len(word)-2)):
+                print "Debug MSG, word: "+ word + ", word in line:" + line[0:i] + ", line num:" + str(num)
+
+                if(isSimilarWord(word1=word, word2= line[i:len(word)+i], debug=True)):
+                    return (line[i:len(word)+i], num)
+
+                if (isSimilarWord(word1=word, word2=line[i:len(word)+i+1], debug=True)):
+                    return (line[i:len(word)+i+1], num)
+
+                if (isSimilarWord(word1=word, word2=line[i:len(word)+i+2], debug=True)):
+                    return (line[i:len(word)+i+2], num)
+
+        return (-1,-1)
+
+    def see_results(self):
+        #print self.result_dict
+        return self.result_dict.keys()
+
+    def get_keyList(self):
+        return self.result_dict.keys()
+
+#------------------------------------------------- UI PART --------------------------------------------------------------
+
+class TextViewExample:
+    def toggle_editable(self, checkbutton, textview):
+        textview.set_editable(checkbutton.get_active())
+
+    def toggle_cursor_visible(self, checkbutton, textview):
+        textview.set_cursor_visible(checkbutton.get_active())
+
+    def toggle_left_margin(self, checkbutton, textview):
+        if checkbutton.get_active():
+            textview.set_left_margin(50)
+        else:
+            textview.set_left_margin(0)
+
+    def toggle_right_margin(self, checkbutton, textview):
+        if checkbutton.get_active():
+            textview.set_right_margin(50)
+        else:
+            textview.set_right_margin(0)
+
+    def new_wrap_mode(self, radiobutton, textview, val):
+        if radiobutton.get_active():
+            textview.set_wrap_mode(val)
+
+    def new_justification(self, radiobutton, textview, val):
+        if radiobutton.get_active():
+            textview.set_justification(val)
+
+    def close_application(self, widget):
+        gtk.main_quit()
+        
+    #-------------------------------    
+    def enter_callback(self, widget, entry):
+        entry_text = entry.get_text()
+        print "Entry contents: %s\n" % entry_text
+             
+    def see_latest_event(self, widget, data=None):
+        try:
+            self.textbuffer.set_text( self.m.see_latest_event(int(self.event_type_txt.get_text()), int(self.num_rows_txt.get_text())) ) #int(self.event_type)
+        except:
+            message = gtk.MessageDialog(type=gtk.MESSAGE_ERROR, buttons=gtk.BUTTONS_OK)
+            message.set_markup("Please first Process the log.")
+            message.run()
+            message.show()
+
+    def see_event_onebyone(self, widget, data=None):
+        try:
+            print int(self.event_type_txt.get_text())
+            #print self.keyList[0]
+            for nline in self.keyList:
+                out = self.m.see_event_bynline(nline, int(self.event_type_txt.get_text()), int(self.num_rows_txt.get_text()))
+                if(out is not None):
+                    self.textbuffer.set_text( out )
+                self.keyList.remove(nline)
+        except:
+            message = gtk.MessageDialog(type=gtk.MESSAGE_ERROR, buttons=gtk.BUTTONS_OK)
+            message.set_markup("Please first Process the log.")
+            message.run()
+            message.show()
+                    
+    def process_log(self, widget, data=None):
+        #------- Process LOG -----
+        print "This Action could take a couple of minutes please Wait!"
+        #message = gtk.MessageDialog(type=gtk.MESSAGE_INFO, buttons=gtk.BUTTONS_OK)
+        #message.set_markup("This Action could take a couple of minutes please Wait!")
+        #message.run()
+        #message.show()
+
+        self.m = main_log(self.entry.get_text())
+        self.path = self.entry.get_text()
+        #self.event_type = self.event_type_txt.get_text()
+        #self.numberOflines = self.num_rows_txt.get_text()
+        self.keyList = self.m.see_results()
+        print self.keyList
+        #print self.m.see_results()
+        print "Done! continue please"
+        message = gtk.MessageDialog(type=gtk.MESSAGE_INFO)
+        message.set_markup("Done! continue please")
+        message.run()
+        message.show()
+        
+    
+    def view_log(self, widget, data=None):
+        infile = open(self.entry.get_text(), "r")
+
+        if infile:
+            string = infile.read()
+            infile.close()
+            self.textbuffer.set_text(string)
+
+    def nlp_search(self, widget, data=None):
+        try:
+            print self.event_type_txtNLP.get_text()
+            # print self.keyList[0]
+            out = self.m.nlp_search(self.event_type_txtNLP.get_text())
+            if (out is not None):
+                self.textbuffer.set_text(out[0])
+
+            message = gtk.MessageDialog(type=gtk.MESSAGE_INFO)
+            message.set_markup("A similar String has found on line:" + str(out[1]))
+            message.run()
+            message.show()
+
+        except ValueError as err:
+            message = gtk.MessageDialog(type=gtk.MESSAGE_ERROR)
+            message.set_markup("Please first Process the log."+err.message)
+            message.run()
+            message.show()
+            
+
+    #-------------------- INIT --------------------------   
+    def __init__(self):
+        self.readlog = None
+        self.keyList = None
+        window = gtk.Window(gtk.WINDOW_TOPLEVEL)
+        window.set_resizable(True)  
+        window.set_size_request(1150, 800)
+        window.connect("destroy", self.close_application)
+        window.set_title("TextView Widget Basic Example")
+        window.set_border_width(0)
+
+        box1 = gtk.VBox(False, 0)
+        window.add(box1)
+        box1.show()
+
+        box2 = gtk.VBox(False, 10)
+        box2.set_border_width(10)
+        box1.pack_start(box2, True, True, 0)
+        box2.show()
+
+        sw = gtk.ScrolledWindow()
+        sw.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
+        textview = gtk.TextView()
+        self.textbuffer = textview.get_buffer()
+        sw.add(textview)
+        sw.show()
+        textview.show()
+
+        box2.pack_start(sw)
+        #--- changes
+
+        hbox = gtk.HButtonBox()
+        box2.pack_start(hbox, False, False, 0)
+        hbox.show()
+
+        vbox = gtk.VBox()
+        vbox.show()
+        hbox.pack_start(vbox, False, False, 0)
+        # check button to toggle editable mode
+        check = gtk.CheckButton("Editable")
+        vbox.pack_start(check, False, False, 0)
+        check.connect("toggled", self.toggle_editable, textview)
+        check.set_active(True)
+        check.show()
+        # check button to toggle cursor visiblity
+        check = gtk.CheckButton("Cursor Visible")
+        vbox.pack_start(check, False, False, 0)
+        check.connect("toggled", self.toggle_cursor_visible, textview)
+        check.set_active(True)
+        check.show()
+        # check button to toggle left margin
+        check = gtk.CheckButton("Left Margin")
+        vbox.pack_start(check, False, False, 0)
+        check.connect("toggled", self.toggle_left_margin, textview)
+        check.set_active(False)
+        check.show()
+        # check button to toggle right margin
+        check = gtk.CheckButton("Right Margin")
+        vbox.pack_start(check, False, False, 0)
+        check.connect("toggled", self.toggle_right_margin, textview)
+        check.set_active(False)
+        check.show()
+        # radio buttons to specify wrap mode
+        vbox = gtk.VBox()
+        vbox.show()
+        hbox.pack_start(vbox, False, False, 0)
+        radio = gtk.RadioButton(None, "WRAP__NONE")
+        vbox.pack_start(radio, False, True, 0)
+        radio.connect("toggled", self.new_wrap_mode, textview, gtk.WRAP_NONE)
+        radio.set_active(True)
+        radio.show()
+        radio = gtk.RadioButton(radio, "WRAP__CHAR")
+        vbox.pack_start(radio, False, True, 0)
+        radio.connect("toggled", self.new_wrap_mode, textview, gtk.WRAP_CHAR)
+        radio.show()
+        radio = gtk.RadioButton(radio, "WRAP__WORD")
+        vbox.pack_start(radio, False, True, 0)
+        radio.connect("toggled", self.new_wrap_mode, textview, gtk.WRAP_WORD)
+        radio.show()
+
+        # radio buttons to specify justification
+        vbox = gtk.VBox()
+        vbox.show()
+        hbox.pack_start(vbox, False, False, 0)
+        radio = gtk.RadioButton(None, "JUSTIFY__LEFT")
+        vbox.pack_start(radio, False, True, 0)
+        radio.connect("toggled", self.new_justification, textview,
+                      gtk.JUSTIFY_LEFT)
+        radio.set_active(True)
+        radio.show()
+        radio = gtk.RadioButton(radio, "JUSTIFY__RIGHT")
+        vbox.pack_start(radio, False, True, 0)
+        radio.connect("toggled", self.new_justification, textview,
+                      gtk.JUSTIFY_RIGHT)
+        radio.show()
+        radio = gtk.RadioButton(radio, "JUSTIFY__CENTER")
+        vbox.pack_start(radio, False, True, 0)
+        radio.connect("toggled", self.new_justification, textview,
+                      gtk.JUSTIFY_CENTER)
+        radio.show()
+
+        separator = gtk.HSeparator()
+        box1.pack_start(separator, False, True, 0)
+        separator.show()
+
+        box2 = gtk.VBox(False, 10)
+        box2.set_border_width(10)
+        box1.pack_start(box2, False, True, 0)
+        box2.show()
+
+        button = gtk.Button("close")
+        button.connect("clicked", self.close_application)
+        box2.pack_start(button, True, True, 0)
+        button.set_flags(gtk.CAN_DEFAULT)
+        button.grab_default()
+        button.show()
+        window.show()
+
+        #Message
+
+
+        #---------- Logic Buttons ---------
+        #--
+        vbox = gtk.VBox()
+        vbox.show()
+        hbox.pack_start(vbox, False, False, 0)
+        label = gtk.Label("Log Path to Process")
+        label.set_alignment(xalign=0.0, yalign=0.5)
+        vbox.pack_start(label, True, True, 0)
+        label.show()
+        
+        self.entry = gtk.Entry()
+        self.entry.set_max_length(100)
+        self.entry.connect("activate", self.enter_callback, self.entry)
+        self.entry.set_text("/var/opt/ORCLemaas/var_opt_ORCLemaas/logs/loganalytics/library/libraryLog.log")
+        self.entry.insert_text("", len(self.entry.get_text()))
+        self.entry.select_region(0, len(self.entry.get_text()))
+        vbox.pack_start(self.entry, True, True, 0)
+        self.entry.show()
+        
+        buttonlog = gtk.Button("Process log")
+        buttonlog.connect("clicked", self.process_log, None)
+        vbox.pack_start(buttonlog, True, True, 0)
+        #buttonlog.set_flags(gtk.CAN_DEFAULT)
+        #buttonlog.grab_default()
+        buttonlog.show()
+        buttonlog.show()
+        
+        buttonlogv = gtk.Button("View log")
+        buttonlogv.connect("clicked", self.view_log, None)
+        vbox.pack_start(buttonlogv, True, True, 0)
+        #buttonlogv.set_flags(gtk.CAN_DEFAULT)
+        #buttonlogv.grab_default()
+        buttonlogv.show()
+        buttonlogv.show()
+
+        vbox = gtk.VBox()
+        vbox.show()
+        hbox.pack_start(vbox, False, False, 0)
+
+        #--
+        label = gtk.Label("Type of Category")
+        label.set_alignment(0, 0)
+        vbox.pack_start(label, True, True, 0)
+        label.show()
+        
+        self.event_type_txt = gtk.Entry()
+        self.event_type_txt.set_max_length(100)
+        self.event_type_txt.connect("activate", self.enter_callback)
+        self.event_type_txt.set_text("2")
+        self.event_type_txt.insert_text("", len(self.event_type_txt.get_text()))
+        self.event_type_txt.select_region(0, len(self.event_type_txt.get_text()))
+        vbox.pack_start(self.event_type_txt, True, True, 0)
+        self.event_type_txt.show()
+        
+        #--
+        label = gtk.Label("Number of Lines")
+        label.set_alignment(0, 0)
+        vbox.pack_start(label, True, True, 0)
+        label.show()
+        
+        self.num_rows_txt = gtk.Entry()
+        self.num_rows_txt.set_max_length(100)
+        self.num_rows_txt.connect("activate", self.enter_callback)
+        self.num_rows_txt.set_text("4")
+        self.num_rows_txt.insert_text("", len(self.num_rows_txt.get_text()))
+        self.num_rows_txt.select_region(0, len(self.num_rows_txt.get_text()))
+        vbox.pack_start(self.num_rows_txt, True, True, 0)
+        self.num_rows_txt.show()
+        
+        button = gtk.Button("See latest event")
+        button.connect("clicked", self.see_latest_event, None)
+        vbox.pack_start(button, True, True, 0)
+        #button.set_flags(gtk.CAN_DEFAULT)
+        #button.grab_default()
+        button.show()
+        window.show()
+        
+        button2 = gtk.Button("See event one by one")
+        button2.connect("clicked", self.see_event_onebyone, None)
+        vbox.pack_start(button2, True, True, 0)
+        #button2.set_flags(gtk.CAN_DEFAULT)
+        #button2.grab_default()
+        button2.show()
+        window.show()
+
+        #hbox.pack_start(vbox, False, False, 0)
+        #---- NLP ---
+        vbox = gtk.VBox()
+        vbox.show()
+        hbox.pack_start(vbox, False, False, 0)
+
+        # --
+        labelNLP = gtk.Label("Similar Words Search")
+        labelNLP.set_alignment(0, 0)
+        vbox.pack_start(labelNLP, True, True, 0)
+        labelNLP.show()
+
+        buttonNLP = gtk.Button("Search")
+        buttonNLP.connect("clicked", self.nlp_search, None)
+        vbox.pack_start(buttonNLP, True, True, 0)
+        buttonNLP.show()
+        window.show()
+
+        self.event_type_txtNLP = gtk.Entry()
+        self.event_type_txtNLP.set_max_length(100)
+        self.event_type_txtNLP.connect("activate", self.enter_callback)
+        self.event_type_txtNLP.set_text("Type words")
+        self.event_type_txtNLP.insert_text("", len(self.event_type_txtNLP.get_text()))
+        self.event_type_txtNLP.select_region(0, len(self.event_type_txtNLP.get_text()))
+        vbox.pack_start(self.event_type_txtNLP, True, True, 0)
+        self.event_type_txtNLP.show()
+
+        
+        # Load the file  into the text window
+        #infile = open("textview-basic.py", "r")
+        infile = open(self.entry.get_text(), "r")
+
+        if infile:
+            string = infile.read()
+            infile.close()
+            self.textbuffer.set_text(string)
+
+def main():
+    gtk.main()
+    return 0       
+
+if __name__ == "__main__":
+    TextViewExample()
+    main()
